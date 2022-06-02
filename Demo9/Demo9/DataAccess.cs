@@ -81,6 +81,23 @@ namespace DBProgrammingDemo9
 
             return returnValue;
         }
-            
+
+        public static int SendData(String sql)
+        {
+            int rowsAffected = 0;
+            using (SqlConnection conn = new SqlConnection(connectionString))
+            {
+                SqlCommand cmd = new SqlCommand(sql, conn);
+
+                conn.Open();
+                rowsAffected = cmd.ExecuteNonQuery();
+            }
+            return rowsAffected;
+        }  
+
+        public static String replaceSQL(string sql)
+        {
+            return sql.Replace("'", "''");
+        }
     }
 }

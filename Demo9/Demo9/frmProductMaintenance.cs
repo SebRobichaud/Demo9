@@ -24,6 +24,7 @@ namespace DBProgrammingDemo9
         int lastProductId = 0;
         int? previousProductId;
         int? nextProductId;
+        int totalProductsCount;
 
         #region [Form Events]
 
@@ -36,6 +37,8 @@ namespace DBProgrammingDemo9
         {
             LoadSuppliers();
             LoadCategories();
+
+            LoadFirstProduct();
         }
 
         /// <summary>
@@ -45,6 +48,18 @@ namespace DBProgrammingDemo9
         /// <param name="e"></param>
         private void btnAdd_Click(object sender, EventArgs e)
         {
+            toolStripStatusLabel1.Text = "Adding a new product";
+            toolStripStatusLabel2.Text = "";
+            ClearControls(grpProducts.Controls);
+
+            LoadCategories();
+            LoadSuppliers();
+
+            btnSave.Text = "Create";
+            btnAdd.Enabled = false;
+            btnDelete.Enabled = false;
+
+            NavigationState(false);
 
         }
 
@@ -56,7 +71,21 @@ namespace DBProgrammingDemo9
         /// <param name="e"></param>
         private void btnCancel_Click(object sender, EventArgs e)
         {
+            try
+            {
+                LoadProductDetails();
+                btnSave.Text = "Save";
+                btnAdd.Enabled = true;
+                btnDelete.Enabled = true;
 
+                NavigationState(true);
+                NextPreviousButtonManagement();
+
+            }
+            catch(Exception ex)
+            {
+                MessageBox.Show(ex.Message, ex.GetType().ToString());
+            }
         }
 
         /// <summary>
@@ -66,7 +95,23 @@ namespace DBProgrammingDemo9
         /// <param name="e"></param>
         private void btnSave_Click(object sender, EventArgs e)
         {
-
+            if (ValidateChildren(ValidationConstraints.Enabled))
+            {
+                ProgressBar();
+                if (txtProductId.Text == string.Empty)
+                {
+                    CreateProduct();
+                }
+                else
+                {
+                    SaveProductChanges();
+                }
+                
+            }
+            else
+            {
+                MessageBox.Show("Check if data is valid.");
+            }
         }
 
         /// <summary>
@@ -76,7 +121,17 @@ namespace DBProgrammingDemo9
         /// <param name="e"></param>
         private void btnDelete_Click(object sender, EventArgs e)
         {
+            if(MessageBox.Show("Are you sure you wish to delete this product?", "Are you sure?", 
+                MessageBoxButtons.YesNo) == DialogResult.Yes)
+            {
+                DeleteProduct();
+            }
+        }
 
+        private void LoadFirstProduct()
+        {
+            currentProductId = Convert.ToInt32(DataAccess.GetValue("SELECT TOP 1 ProductID FROM Products ORDER BY ProductName;"));
+            LoadProductDetails();   
         }
 
         #endregion
@@ -138,28 +193,39 @@ namespace DBProgrammingDemo9
 
             DataSet ds = new DataSet();
             ds = DataAccess.GetData(sqlStatements);
+            if (ds.Tables[0].Rows.Count == 1)
+            {
+                DataRow selectedProduct = ds.Tables[0].Rows[0];
 
-            DataRow selectedProduct = ds.Tables[0].Rows[0];
+                txtProductId.Text = selectedProduct["ProductId"].ToString();
+                cmbSuppliers.SelectedValue = selectedProduct["SupplierId"];
+                cmbCategories.SelectedValue = selectedProduct["CategoryId"];
+                txtProductName.Text = selectedProduct["ProductName"].ToString();
+                txtQtyPerUnit.Text = selectedProduct["QuantityPerUnit"].ToString();
+                txtUnitPrice.Text = Convert.ToDouble(selectedProduct["UnitPrice"]).ToString("n2");
+                txtStock.Text = selectedProduct["UnitsInStock"].ToString();
+                txtOnOrder.Text = selectedProduct["UnitsOnOrder"].ToString();
+                txtReorder.Text = selectedProduct["ReorderLevel"].ToString();
+                chkDiscontinued.Checked = Convert.ToBoolean(selectedProduct["Discontinued"]);
+
+                firstProductId = Convert.ToInt32(ds.Tables[1].Rows[0]["FirstProductId"]);
+                previousProductId = ds.Tables[1].Rows[0]["PreviousProductId"] != DBNull.Value ? Convert.ToInt32(ds.Tables["Table1"].Rows[0]["PreviousProductId"]) : (int?)null;
+                nextProductId = ds.Tables[1].Rows[0]["NextProductId"] != DBNull.Value ? Convert.ToInt32(ds.Tables["Table1"].Rows[0]["NextProductId"]) : (int?)null;
+                lastProductId = Convert.ToInt32(ds.Tables[1].Rows[0]["LastProductId"]);
+                currentRecord = Convert.ToInt32(ds.Tables[1].Rows[0]["RowNumber"]);
+                totalProductsCount = Convert.ToInt32(ds.Tables[2].Rows[0]["ProductCount"]);
+
+                //Which item we are on in the count
+                toolStripStatusLabel1.Text = $"Displaying product {currentRecord} of ?";
+            }
+            else
+            {
+                MessageBox.Show("The product no longer exists");
+                LoadFirstProduct();
+            }
+                NextPreviousButtonManagement();
+
             
-            cmbSuppliers.SelectedValue = selectedProduct["SupplierId"];
-            cmbCategories.SelectedValue = selectedProduct["CategoryId"];
-            txtProductName.Text = selectedProduct["ProductName"].ToString();
-            txtQtyPerUnit.Text = selectedProduct["QuantityPerUnit"].ToString();
-            txtUnitPrice.Text = Convert.ToDouble(selectedProduct["UnitPrice"]).ToString("n2");
-            txtStock.Text = selectedProduct["UnitsInStock"].ToString();
-            txtOnOrder.Text = selectedProduct["UnitsOnOrder"].ToString();
-            txtReorder.Text = selectedProduct["ReorderLevel"].ToString();
-            chkDiscontinued.Checked = Convert.ToBoolean(selectedProduct["Discontinued"]);
-
-            firstProductId = Convert.ToInt32(ds.Tables[1].Rows[0]["FirstProductId"]);
-            previousProductId = ds.Tables[1].Rows[0]["PreviousProductId"] != DBNull.Value ? Convert.ToInt32(ds.Tables["Table1"].Rows[0]["PreviousProductId"]) : (int?)null;
-            nextProductId = ds.Tables[1].Rows[0]["NextProductId"] != DBNull.Value ? Convert.ToInt32(ds.Tables["Table1"].Rows[0]["NextProductId"]) : (int?)null;
-            lastProductId = Convert.ToInt32(ds.Tables[1].Rows[0]["LastProductId"]);
-            currentRecord = Convert.ToInt32(ds.Tables[1].Rows[0]["RowNumber"]);
-
-            //Which item we are on in the count
-            toolStripStatusLabel1.Text = $"Displaying product {currentRecord} of ?";
-            NextPreviousButtonManagement();
         }
 
         #endregion
@@ -300,5 +366,125 @@ namespace DBProgrammingDemo9
         }
 
         #endregion
+
+        private void cmb_Validating(object sender, CancelEventArgs e)
+        {
+            ComboBox cmb = (ComboBox)sender;
+
+            string errorMsg = null;
+
+            if(cmb.SelectedIndex < 1 || string.IsNullOrEmpty(cmb.SelectedValue.ToString()))
+            {
+                errorMsg = $"{cmb.Tag} is required.";
+                e.Cancel = true;
+            }
+            errProvider.SetError(cmb, errorMsg);
+        }
+
+        private void txt_Validating(object sender, CancelEventArgs e)
+        {
+            TextBox txtBox = (TextBox)sender;
+
+            String errorMsg = null;
+
+            if(txtBox.Text == String.Empty)
+            {
+                errorMsg = $"{txtBox.Tag} is Required";
+                e.Cancel = true;
+            }
+
+            if ((txtBox.Name == "txtUnitPrice" || txtBox.Name == "txtStock" 
+                || txtBox.Name == "txtOnOrder" || txtBox.Name == "txtReorder") &&
+                !IsNumeric(txtBox.Text))
+            {
+                errorMsg = $"{txtBox.Text} is not numeric.";
+                e.Cancel = true;
+            }
+
+            errProvider.SetError(txtBox, errorMsg);
+        }
+
+       private void CreateProduct()
+        {
+            String sql = $@"INSERT INTO products (ProductName, SupplierID, CategoryID,QuantityPerUnit,UnitPrice, UnitsInStock, UnitsOnOrder,ReorderLevel,Discontinued) Values ('{txtProductName.Text.Trim()}',
+                           {cmbSuppliers.SelectedValue}, {cmbCategories.SelectedValue}, '{txtQtyPerUnit.Text.Trim()}', {txtUnitPrice.Text.Trim()}, 
+                           {txtStock.Text.Trim()}, {txtOnOrder.Text.Trim()}, {txtReorder.Text.Trim()}, 
+                           {(chkDiscontinued.Checked ? 1 : 0)});";
+
+
+
+            int rowsAffected = DataAccess.SendData(sql);
+            if (rowsAffected == 1)
+            {
+                MessageBox.Show("Product created successfully");
+            }
+            else
+            {
+                MessageBox.Show("Insert product was not successful");
+            }
+            btnAdd.Enabled = true;
+            btnDelete.Enabled = true;
+            btnSave.Text = "Save";
+            LoadFirstProduct();
+            NavigationState(true);
+        }
+
+
+        private void SaveProductChanges()
+        {
+            string sqlUpdateQuery = $@"update products set 
+                                    productName = '{DataAccess.replaceSQL(txtProductName.Text.Trim())}', 
+                                    supplierId = {cmbSuppliers.SelectedValue}, 
+                                    categoryId = {cmbCategories.SelectedValue}, 
+                                    QuantityPerUnit = '{DataAccess.replaceSQL(txtQtyPerUnit.Text.Trim())}', 
+                                    UnitPrice = {txtUnitPrice.Text.Trim()}, 
+                                    UnitsInStock = {txtStock.Text.Trim()}, 
+                                    UnitsOnOrder = {txtOnOrder.Text.Trim()}, 
+                                    ReOrderLevel = {txtReorder.Text.Trim()}, 
+                                    Discontinued = {(chkDiscontinued.Checked ? 1 : 0)}
+                                    where
+                                    ProductID = {txtProductId.Text}";
+
+            int rowsAffected = DataAccess.SendData(sqlUpdateQuery);
+
+
+            if(rowsAffected == 1)
+            {
+                MessageBox.Show("Product has been updated.");
+            }
+            else
+            {
+                MessageBox.Show("Update Failed, no rows updated.");
+            }
+        }
+
+        private void DeleteProduct()
+        {
+            String sqlCheckOrderDetails = $"SELECT COUNT(*) FROM [Order Details] " +
+                $"WHERE ProductId = {txtProductId.Text.Trim()}";
+            int rowsAffected = Convert.ToInt32(DataAccess.GetValue(sqlCheckOrderDetails));
+            if(rowsAffected == 0)
+            {
+                string sqlDelete = $"DELETE FROM Products WHERE ProductId = {txtProductId.Text}";
+                int rowAffected = DataAccess.SendData(sqlDelete);
+                if (rowAffected == 1)
+                {
+                    MessageBox.Show("Product deleted successfully");
+                    LoadFirstProduct();
+                }
+                else
+                {
+                    MessageBox.Show("Product not deleted successfully.");
+                }
+            }
+            else
+            {
+                MessageBox.Show("Product cannot be deleted.");
+            }
+
+           
+        }
+
     }
+    
 }
